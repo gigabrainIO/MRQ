@@ -30,6 +30,9 @@ class DefaultExperimentArguments:
     Gym_total_timesteps: int = 1e6
     Gym_eval_freq: int = 5e3
 
+    Humanoid_total_timesteps: int = 1e6
+    Humanoid_eval_freq: int = 5e3
+
     def __post_init__(self): utils.enforce_dataclass_type(self)
 
 
@@ -218,8 +221,13 @@ def load_experiment(save_folder: str, project_name: str, device: torch.device, a
     # Load eval
     evals = np.loadtxt(f'{save_folder}/{project_name}.txt').tolist()
     # Load envs
-    env = pickle.load(open(f'{save_folder}/{project_name}/env.pickle', 'rb'))
-    eval_env = pickle.load(open(f'{save_folder}/{project_name}/eval_env.pickle', 'rb'))
+    if project_name.startswith("Humanoid-"):
+        # Humanoid env is not compatible with pickle loading, create new environment
+        env = env_preprocessing.Env(args, args.seed, eval_env=False)
+        eval_env = env_preprocessing.Env(args, args.seed+100, eval_env=True) # +100 to make sure the seed is different.
+    else:
+        env = pickle.load(open(f'{save_folder}/{project_name}/env.pickle', 'rb'))
+        eval_env = pickle.load(open(f'{save_folder}/{project_name}/eval_env.pickle', 'rb'))
     # Load agent
     agent_dict = np.load(f'{save_folder}/{project_name}/agent_var.npy', allow_pickle=True).item()
     agent = MRQ.Agent(env.obs_shape, env.action_dim, env.max_action,

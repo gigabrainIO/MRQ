@@ -273,3 +273,51 @@ class AtariPreprocessing:
         obs = self.get_obs()
         self.history_queue.append(obs)
         return np.concatenate(self.history_queue), reward, terminal, self.frames == self.max_ep_frames, info
+
+class HumanoidPreprocessing:
+    def __init__(self, env_name: str, seed: int=0, eval_env: bool=False):
+        import humanoid_bench
+        import os
+        import sys
+        policy_path = None
+        mean_path = None
+        var_path = None
+        policy_type = None
+        small_obs = None
+        if small_obs is not None:
+            small_obs = str(small_obs)
+    
+        print("small obs start:", small_obs)
+        if sys.platform != "darwin" and "MUJOCO_GL" not in os.environ:
+            os.environ["MUJOCO_GL"] = "egl"
+        if "SLURM_STEP_GPUS" in os.environ:
+            os.environ["EGL_DEVICE_ID"] = os.environ["SLURM_STEP_GPUS"]
+            print(f"EGL_DEVICE_ID set to {os.environ['SLURM_STEP_GPUS']}")
+        if "SLURM_JOB_GPUS" in os.environ:
+            os.environ["EGL_DEVICE_ID"] = os.environ["SLURM_JOB_GPUS"]
+            print(f"EGL_DEVICE_ID set to {os.environ['SLURM_JOB_GPUS']}")
+    
+        self.env = gym.make(
+            env_name.removeprefix("Humanoid-"),
+            policy_path=policy_path,
+            mean_path=mean_path,
+            var_path=var_path,
+            policy_type=policy_type,
+            small_obs=small_obs,
+            render_mode="rgb_array",
+        )
+        self.env.max_episode_steps = self.env.get_wrapper_attr("_max_episode_steps")
+
+        self.offline = False
+        self.pixel_obs = False
+        self.obs_shape = self.env.observation_space.shape
+        self.history = 1
+        self.max_ep_timesteps = self.env.spec.max_episode_steps
+        self.action_space = self.env.action_space
+
+    def step(self, action: int | float):
+        return self.env.step(action)
+
+    def reset(self):
+        return self.env.reset()
+
