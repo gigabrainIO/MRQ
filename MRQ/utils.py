@@ -50,16 +50,16 @@ class Logger:
                 "name": "run1"
             })
         """
-    # Try importing wandb, otherwise define a dummy
-    try:
-        import wandb
-        self.wandb_found = True
-    except ImportError:
-        wandb = None
-        self.wandb_found = False
-        if not self.wandb_found:
-            self.log_print("WARNING: wandb not installed — wandb logging disabled")
-            return
+        # Try importing wandb, otherwise define a dummy
+        try:
+            import wandb
+            self.wandb_found = True
+        except ImportError:
+            wandb = None
+            self.wandb_found = False
+            if not self.wandb_found:
+                self.log_print("WARNING: wandb not installed — wandb logging disabled")
+                return
 
         try:
             self.wandb_run = wandb.init(**config)
