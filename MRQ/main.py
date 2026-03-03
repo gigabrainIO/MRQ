@@ -51,10 +51,13 @@ def main():
     parser.add_argument('--eval_folder', default='./evals', type=str)
     parser.add_argument('--log_folder', default='./logs', type=str)
     parser.add_argument('--save_folder', default='./checkpoint', type=str)
+    parser.add_argument('--wandb_entity', default='humanoid-benchmark', type=str)
+    parser.add_argument('--wandb_project', default='humanoid-task', type=str)
     # Experiment checkpointing
     parser.add_argument('--save_experiment', default=False, action=argparse.BooleanOptionalAction, type=bool)
     parser.add_argument('--save_freq', default=1e5, type=int)
     parser.add_argument('--load_experiment', default=False, action=argparse.BooleanOptionalAction, type=bool)
+    parser.add_argument('--save_video', default=False, action=argparse.BooleanOptionalAction, type=bool)
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() and args.device=='cuda' else 'cpu')
@@ -79,32 +82,41 @@ def main():
     else:
         env = env_preprocessing.Env(args.env, args.seed, eval_env=False)
         eval_env = env_preprocessing.Env(args.env, args.seed+100, eval_env=True) # +100 to make sure the seed is different.
-
+        logger = utils.Logger(
+        	f"{args.log_folder}/{args.project_name}.txt",
+            enable_wandb=True,
+            wandb_config={
+                "project": args.wandb_project,
+                "entity": args.wandb_entity,
+                "config": vars(args),
+                "name": args.project_name,
+                "monitor_gym" : args.save_video,
+            }
+        )
         agent = MRQ.Agent(env.obs_shape, env.action_dim, env.max_action,
             env.pixel_obs, env.discrete, device, env.history)
-
-        logger = utils.Logger(f'{args.log_folder}/{args.project_name}.txt')
 
         exp = OnlineExperiment(agent, env, eval_env, logger, [],
             0, args.total_timesteps, 0,
             args.eval_freq, args.eval_eps, args.eval_folder, args.project_name,
             args.save_experiment, args.save_freq, args.save_folder)
 
-    exp.logger.title('Experiment')
-    exp.logger.log_print(f'Algorithm:\t{exp.agent.name}')
-    exp.logger.log_print(f'Env:\t\t{exp.env.env_name}')
-    exp.logger.log_print(f'Seed:\t\t{exp.env.seed}')
-
-    exp.logger.title('Environment hyperparameters')
-    if hasattr(exp.env.env, 'hp'): exp.logger.log_print(exp.env.env.hp)
-    exp.logger.log_print(f'Obs shape:\t\t{exp.env.obs_shape}')
-    exp.logger.log_print(f'Action dim:\t\t{exp.env.action_dim}')
-    exp.logger.log_print(f'Discrete actions:\t{exp.env.discrete}')
-    exp.logger.log_print(f'Pixel observations:\t{exp.env.pixel_obs}')
-
-    exp.logger.title('Agent hyperparameters')
-    exp.logger.log_print(exp.agent.hp)
-    exp.logger.log_print('-'*40)
+    if logger.wandb_found == False:
+        exp.logger.title('Experiment')
+        exp.logger.log_print(f'Algorithm:\t{exp.agent.name}')
+        exp.logger.log_print(f'Env:\t\t{exp.env.env_name}')
+        exp.logger.log_print(f'Seed:\t\t{exp.env.seed}')
+    
+        exp.logger.title('Environment hyperparameters')
+        if hasattr(exp.env.env, 'hp'): exp.logger.log_print(exp.env.env.hp)
+        exp.logger.log_print(f'Obs shape:\t\t{exp.env.obs_shape}')
+        exp.logger.log_print(f'Action dim:\t\t{exp.env.action_dim}')
+        exp.logger.log_print(f'Discrete actions:\t{exp.env.discrete}')
+        exp.logger.log_print(f'Pixel observations:\t{exp.env.pixel_obs}')
+    
+        exp.logger.title('Agent hyperparameters')
+        exp.logger.log_print(exp.agent.hp)
+        exp.logger.log_print('-'*40)
 
     exp.run()
 
@@ -159,7 +171,18 @@ class OnlineExperiment:
                     f'Total T: {self.t + 1}, '
                     f'Episode Num: {self.env.ep_num}, '
                     f'Episode T: {self.env.ep_timesteps}, '
-                    f'Reward: {self.env.ep_total_reward:.3f}')
+                    f'Reward: {self.env.ep_total_reward:.3f},
+                episode_metrics = {
+                    "train/total_reward": self.env.ep_total_reward,
+                    "train/episode_length": self.env.ep_timesteps,
+                    "train/episode_time_step": self.t,
+                }
+                self.logger.log_metrics(episode_metrics, step=self.t)
+                buffer_metrics = {
+                    "buffer/mean_priority": float(self.agent.replay_buffer.priority[:self.agent.replay_buffer.size].mean().cpu()),
+                    "buffer/mask_fraction": float(self.agent.replay_buffer.mask[:self.agent.replay_buffer.size].mean().cpu()),
+                }
+                self.logger.log_metrics(buffer_metrics, step=self.t)
                 state = self.env.reset()
 
             self.t += 1
@@ -189,6 +212,12 @@ class OnlineExperiment:
             f'Average total reward over {self.eval_eps} episodes: {total_reward.mean():.3f}\n'
             f'Total time passed: {round((time.time() - self.start_time + self.time_passed)/60., 2)} minutes')
 
+        eval_metrics = {
+            "eval/avg_reward": total_reward.mean(),
+            "eval/std_reward": total_reward.std(),
+        }
+        self.logger.log_metrics(eval_metrics, step=self.t)
+        
         np.savetxt(f'{self.eval_folder}/{self.project_name}.txt', self.evals, fmt='%.14f')
 
 
@@ -201,12 +230,15 @@ def save_experiment(exp: OnlineExperiment):
     var_dict['torch_seed'] = torch.get_rng_state()
     np.save(f'{exp.save_folder}/{exp.project_name}/exp_var.npy', var_dict)
     # Save eval
-    np.savetxt(f'{exp.save_folder}/{exp.project_name}.txt', exp.evals, fmt='%.14f')
+    if len(exp.evals) > 0:
+        np.savetxt(f'{exp.save_folder}/{exp.project_name}.txt', exp.evals, fmt='%.14f')
     # Save envs
     pickle.dump(exp.env, file=open(f'{exp.save_folder}/{exp.project_name}/env.pickle', 'wb'))
     pickle.dump(exp.eval_env, file=open(f'{exp.save_folder}/{exp.project_name}/eval_env.pickle', 'wb'))
     # Save agent
-    exp.agent.save(f'{exp.save_folder}/{exp.project_name}')
+    folder = f'{exp.save_folder}/{exp.project_name}'
+    exp.agent.save(folder)
+    exp.logger.log_artifact(f"{folder}/agent_var.npy", f"{exp.project_name}_checkpoint_{var_dict['time_passed']}", artifact_type="checkpoint")
 
     exp.logger.title('Saved experiment')
 
@@ -233,8 +265,18 @@ def load_experiment(save_folder: str, project_name: str, device: torch.device, a
     agent = MRQ.Agent(env.obs_shape, env.action_dim, env.max_action,
         env.pixel_obs, env.discrete, device, env.history, dataclasses.asdict(agent_dict['hp']))
     agent.load(f'{save_folder}/{project_name}')
-
-    logger = utils.Logger(f'{args.log_folder}/{args.project_name}.txt')
+    
+    logger = utils.Logger(
+        f"{args.log_folder}/{args.project_name}.txt",
+        enable_wandb=True,
+        wandb_config={
+            "project": args.wandb_project,
+            "entity": args.wandb_entity,
+            "config": vars(args),
+            "name": args.project_name,
+            "monitor_gym" : args.save_video,
+        }
+    )
     logger.title(
         'Loaded experiment\n'
         f'Starting from: {exp_dict["t"]} time steps.')

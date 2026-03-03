@@ -22,9 +22,52 @@ def set_instance_vars(hp: dataclasses.dataclass, c: object):
 
 
 class Logger:
-    def __init__(self, log_file: str):
-        self.log_file = log_file
+    def __init__(self, log_file: str, enable_wandb: bool = False, wandb_config: dict = None):
+        """
+        A logger that prints to file + console, and (optionally) logs to Weights & Biases.
 
+        Args:
+            log_file (str): Path to the log file.
+            enable_wandb (bool): Whether to log to wandb.
+            wandb_config (dict): Config for wandb.init() (project, entity, etc).
+        """
+        self.log_file = log_file
+        self.enable_wandb = enable_wandb
+        self.wandb_initialized = False
+
+        # Initialize wandb if requested
+        if self.enable_wandb:
+            self.init_wandb(wandb_config or {})
+
+    def init_wandb(self, config: dict):
+        """
+        Initialize wandb logging.
+
+        Example:
+            logger.init_wandb({
+                "project": "mrq_experiments",
+                "entity": "my_team",
+                "name": "run1"
+            })
+        """
+	# Try importing wandb, otherwise define a dummy
+	try:
+	    import wandb
+	    self.wandb_found = True
+	except ImportError:
+	    wandb = None
+	    self.wandb_found = False
+        if not self.wandb_found:
+            self.log_print("WARNING: wandb not installed — wandb logging disabled")
+            return
+
+        try:
+            self.wandb_run = wandb.init(**config)
+            self.wandb_initialized = True
+            self.log_print(f"WandB run initialized: {self.wandb_run.name}")
+        except Exception as e:
+            self.log_print(f"Failed to init wandb: {e}")
+            self.enable_wandb = False
 
     def log_print(self, x: str | object):
         with open(self.log_file, 'a') as f:
@@ -41,6 +84,59 @@ class Logger:
         self.log_print(text)
         self.log_print('-'*40)
 
+    def log_metrics(self, metrics: dict, step: int = None):
+        """
+        Log a dictionary of scalars.
+
+        Args:
+            metrics (dict): Keys → metric names, values → scalars.
+            step (int | None): Optional global step for wandb/log prints.
+        """
+        # Log locally
+        msg = f"[STEP {step}] " + " | ".join([f"{k}: {v}" for k, v in metrics.items()])
+        self.log_print(msg)
+
+        # Log to wandb if enabled
+        if self.enable_wandb and self.wandb_initialized:
+            try:
+                if step is not None:
+                    wandb.log(metrics, step=step)
+                else:
+                    wandb.log(metrics)
+            except Exception as e:
+                self.log_print(f"WARNING: failed to wandb.log metrics: {e}")
+
+    def log_scalar(self, name: str, value: float, step: int = None):
+        """
+        Log a single scalar value.
+        """
+        self.log_metrics({name: value}, step)
+
+    def log_gradients(self, model, prefix="grad"):
+        """Log gradient norms for a PyTorch model."""
+        if not self.enable_wandb or not self.wandb_initialized:
+            return
+        grads = {}
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                grads[f"{prefix}/{name}"] = param.grad.norm().item()
+        wandb.log(grads)
+
+    def log_model_weights(self, model, prefix="weight"):
+        """Log model weight norms."""
+        if not self.enable_wandb or not self.wandb_initialized:
+            return
+        weights = {}
+        for name, param in model.named_parameters():
+            weights[f"{prefix}/{name}"] = param.data.norm().item()
+        wandb.log(weights)
+
+    def log_artifact(self, artifact_path: str, artifact_name: str, artifact_type="model"):
+        """Log a file/artifact to wandb."""
+        if self.enable_wandb and self.wandb_initialized:
+            artifact = wandb.Artifact(artifact_name, type=artifact_type)
+            artifact.add_file(artifact_path)
+            wandb.log_artifact(artifact)
 
 # Takes the formatted results and returns a dictionary of env -> (timesteps, seed).
 def results_to_numpy(file: str='../results/gym_results.txt'):
