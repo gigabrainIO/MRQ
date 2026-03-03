@@ -79,7 +79,6 @@ def main():
 
     if args.load_experiment:
         exp = load_experiment(args.save_folder, args.project_name, device, args)
-        logger = exp.logger
     else:
         env = env_preprocessing.Env(args.env, args.seed, eval_env=False)
         eval_env = env_preprocessing.Env(args.env, args.seed+100, eval_env=True) # +100 to make sure the seed is different.
@@ -102,22 +101,21 @@ def main():
             args.eval_freq, args.eval_eps, args.eval_folder, args.project_name,
             args.save_experiment, args.save_freq, args.save_folder)
 
-    if logger.wandb_found == False:
-        exp.logger.title('Experiment')
-        exp.logger.log_print(f'Algorithm:\t{exp.agent.name}')
-        exp.logger.log_print(f'Env:\t\t{exp.env.env_name}')
-        exp.logger.log_print(f'Seed:\t\t{exp.env.seed}')
-    
-        exp.logger.title('Environment hyperparameters')
-        if hasattr(exp.env.env, 'hp'): exp.logger.log_print(exp.env.env.hp)
-        exp.logger.log_print(f'Obs shape:\t\t{exp.env.obs_shape}')
-        exp.logger.log_print(f'Action dim:\t\t{exp.env.action_dim}')
-        exp.logger.log_print(f'Discrete actions:\t{exp.env.discrete}')
-        exp.logger.log_print(f'Pixel observations:\t{exp.env.pixel_obs}')
-    
-        exp.logger.title('Agent hyperparameters')
-        exp.logger.log_print(exp.agent.hp)
-        exp.logger.log_print('-'*40)
+    exp.logger.title('Experiment')
+    exp.logger.log_print(f'Algorithm:\t{exp.agent.name}')
+    exp.logger.log_print(f'Env:\t\t{exp.env.env_name}')
+    exp.logger.log_print(f'Seed:\t\t{exp.env.seed}')
+
+    exp.logger.title('Environment hyperparameters')
+    if hasattr(exp.env.env, 'hp'): exp.logger.log_print(exp.env.env.hp)
+    exp.logger.log_print(f'Obs shape:\t\t{exp.env.obs_shape}')
+    exp.logger.log_print(f'Action dim:\t\t{exp.env.action_dim}')
+    exp.logger.log_print(f'Discrete actions:\t{exp.env.discrete}')
+    exp.logger.log_print(f'Pixel observations:\t{exp.env.pixel_obs}')
+
+    exp.logger.title('Agent hyperparameters')
+    exp.logger.log_print(exp.agent.hp)
+    exp.logger.log_print('-'*40)
 
     exp.run()
 
