@@ -79,6 +79,7 @@ def main():
 
     if args.load_experiment:
         exp = load_experiment(args.save_folder, args.project_name, device, args)
+        logger = exp.logger
     else:
         env = env_preprocessing.Env(args.env, args.seed, eval_env=False)
         eval_env = env_preprocessing.Env(args.env, args.seed+100, eval_env=True) # +100 to make sure the seed is different.
