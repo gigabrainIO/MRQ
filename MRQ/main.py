@@ -171,7 +171,7 @@ class OnlineExperiment:
                     f'Total T: {self.t + 1}, '
                     f'Episode Num: {self.env.ep_num}, '
                     f'Episode T: {self.env.ep_timesteps}, '
-                    f'Reward: {self.env.ep_total_reward:.3f},
+                    f'Reward: {self.env.ep_total_reward:.3f}')
                 episode_metrics = {
                     "train/total_reward": self.env.ep_total_reward,
                     "train/episode_length": self.env.ep_timesteps,
