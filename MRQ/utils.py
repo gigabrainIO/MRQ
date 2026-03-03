@@ -9,7 +9,7 @@ import dataclasses
 import pprint
 
 import numpy as np
-
+import wandb
 
 def enforce_dataclass_type(dataclass: dataclasses.dataclass):
     for field in dataclasses.fields(dataclass):
@@ -50,17 +50,6 @@ class Logger:
                 "name": "run1"
             })
         """
-        # Try importing wandb, otherwise define a dummy
-        try:
-            import wandb
-            self.wandb_found = True
-        except ImportError:
-            wandb = None
-            self.wandb_found = False
-            if not self.wandb_found:
-                self.log_print("WARNING: wandb not installed — wandb logging disabled")
-                return
-
         try:
             self.wandb_run = wandb.init(**config)
             self.wandb_initialized = True
