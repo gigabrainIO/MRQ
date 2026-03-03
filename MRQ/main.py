@@ -221,10 +221,10 @@ def load_experiment(save_folder: str, project_name: str, device: torch.device, a
     # Load eval
     evals = np.loadtxt(f'{save_folder}/{project_name}.txt').tolist()
     # Load envs
-    if project_name.startswith("Humanoid-"):
+    if args.env.startswith("Humanoid-"):
         # Humanoid env is not compatible with pickle loading, create new environment
-        env = env_preprocessing.Env(args, args.seed, eval_env=False)
-        eval_env = env_preprocessing.Env(args, args.seed+100, eval_env=True) # +100 to make sure the seed is different.
+        env = env_preprocessing.Env(args.env, args.seed, eval_env=False)
+        eval_env = env_preprocessing.Env(args.env, args.seed+100, eval_env=True) # +100 to make sure the seed is different.
     else:
         env = pickle.load(open(f'{save_folder}/{project_name}/env.pickle', 'rb'))
         eval_env = pickle.load(open(f'{save_folder}/{project_name}/eval_env.pickle', 'rb'))
